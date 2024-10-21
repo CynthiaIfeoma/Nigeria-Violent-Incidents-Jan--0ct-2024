@@ -1,0 +1,109 @@
+#data
+violent_events <- read_csv("/Users/cynthiaugwu/Downloads/Jan_Oct21.csv")
+
+# 1. GEOSPATIAL Heatmap for incident count and fatalities
+nigeria_map <- st_read("/Users/cynthiaugwu/Downloads/ng.json")
+
+# Arrange json data for plotting 
+head(nigeria_map)
+nigeria_map$centroid <- st_centroid(nigeria_map$geometry)
+nigeria_map$long <- st_coordinates(nigeria_map$centroid)[,1]
+nigeria_map$lat <- st_coordinates(nigeria_map$centroid)[,2]
+
+# Plot 
+ggplot() +
+  geom_sf(data = nigeria_map, fill = "white", color = "black") +  
+  stat_density_2d(data = violent_events_sf,
+                  aes(x = st_coordinates(violent_events_sf)[, 1],
+                      y = st_coordinates(violent_events_sf)[, 2],
+                      fill = ..level..),
+                  geom = "polygon", alpha = 0.5, adjust = 0.5) + 
+  scale_fill_viridis_c(option = "magma", name = "Incident Count",
+                       guide = "legend") +  
+  stat_density_2d(data = violent_events_sf,
+                  aes(x = st_coordinates(violent_events_sf)[, 1],
+                      y = st_coordinates(violent_events_sf)[, 2],
+                      fill = ..level..),
+                  geom = "polygon", alpha = 0.5, adjust = 0.5) +  
+  scale_fill_viridis_c(option = "plasma", name = "Fatalities", guide = "legend") +  
+  geom_label(data = nigeria_map,
+             aes(x = long, y = lat, label = name),
+             size = 2, color = "black", fill = "white", alpha = 0.8, label.padding = unit(0.15, "lines")) + 
+  theme_minimal() +
+  labs(title = "Geospatial Heatmap of Violent Events in Nigeria (Jan - Oct 2024)",
+       x = "Longitude",
+       y = "Latitude") +
+  theme(legend.position = "right",
+        plot.title = element_text(face = "bold", hjust = 0.5)) +
+  guides(fill = guide_legend(override.aes = list(alpha = c(0.5, 0.3))))
+
+
+
+# 2. Heatmap of Violent Events 
+# Data aggregation: Count incidents and sum fatalities by state
+state_data <- violent_events %>%
+  group_by(state = admin1) %>%  
+  summarise(
+    incident_count = n(),
+    total_fatalities = sum(fatalities, na.rm = TRUE),
+    .groups = 'drop'
+  )
+
+# Join with the Nigeria map data
+nigeria_map <- nigeria_map %>%
+  left_join(state_data, by = c("name" = "state"))
+print(head(nigeria_map))
+
+# Keep only the relevant columns from the join
+nigeria_map <- nigeria_map %>%
+  select(source, id, name, long, lat,
+         incident_count = incident_count.x, 
+         total_fatalities = total_fatalities.x,
+         geometry, centroid)
+print(head(nigeria_map))
+print(names(nigeria_map))
+
+# Heatmap for incident counts
+ggplot(data = nigeria_map) +
+  geom_sf(aes(fill = incident_count), color = NA) +  
+  scale_fill_viridis_c(option = "plasma", name = "Incident Count") +
+  theme_minimal() +
+  labs(title = "Heatmap of Violent Incidents Count in Nigeria (Jan - Oct 2024)",
+       x = "Longitude",
+       y = "Latitude") +
+  geom_label_repel(data = nigeria_map,
+                   aes(x = long, y = lat, label = paste(name, "\n", incident_count)), 
+                   size = 2, 
+                   color = "white", 
+                   fill = "black",
+                   alpha = 0.8, 
+                   label.padding = unit(0.2, "lines"),  
+                   label.r = unit(0.15, "lines"), 
+                   segment.color = "grey50", 
+                   box.padding = 0.5,
+                   max.overlaps = Inf) +
+  theme(legend.position = "right") +
+  theme(plot.title = element_text(face = "bold", hjust = 0.5))
+  
+
+# Heatmap for fatalities 
+ggplot(data = nigeria_map) + 
+  geom_sf(aes(fill = total_fatalities), color = NA) + 
+  scale_fill_viridis_c(option = "plasma", name = "Total Fatalities") + 
+  theme_minimal() + 
+  labs(title = "Heatmap of Fatalities from Violent Incidents in Nigeria (Jan - Oct 2024)", 
+       x = "Longitude", 
+       y = "Latitude") + 
+  geom_label_repel(data = nigeria_map,
+             aes(x = long, y = lat, label = paste(name, "\n", total_fatalities)), 
+               size = 2, 
+               color = "white", 
+               fill = "black",
+               alpha = 0.8, 
+               label.padding = unit(0.2, "lines"),  
+               label.r = unit(0.15, "lines"), 
+               segment.color = "grey50", 
+               box.padding = 0.5,
+               max.overlaps = Inf) +
+  theme(legend.position = "right") +
+  theme(plot.title = element_text(face = "bold", hjust = 0.5))
